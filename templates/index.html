@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SRE Toolkit Home</title>
+  <!-- Link to the external stylesheet -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  <!-- Example Google Font for signature; change as desired -->
+  <link href="https://fonts.googleapis.com/css2?family=Satisfy&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Common Header Bar -->
+  <header class="header-bar">
+    <div class="header-content">
+      <span class="site-title">SRE Toolkit</span>
+    </div>
+  </header>
+  
+  <!-- Contact Us Button (fixed at top right) -->
+  <div class="contact-us">
+    <button id="contact-btn">Contact Us</button>
+    <!-- Added id="contact-box" so JS can toggle this element -->
+    <div id="contact-box" class="contact-box">
+      <p>Please drop an email to the below email:</p>
+      <div class="email-address">GI_prod_mgmt_cloud_SRE@aig.com</div>
+    </div>
+  </div>
+  
+  <!-- Main Content -->
+  <div class="content">
+    <div class="buttons">
+      <a href="{{ url_for('certificate_single_form') }}" class="button">Certificate Check for Single Host</a>
+      <a href="{{ url_for('certificate_bulk_form') }}" class="button">Certificate Details Check for Bulk Host</a>
+      <a href="{{ url_for('port_single_form') }}" class="button">Port Check for Single Host</a>
+      <a href="{{ url_for('port_bulk_form') }}" class="button">Port Check for Bulk Hosts</a>
+    </div>
+  </div>
+  
+  <!-- Fixed Signature -->
+  <div class="signature">
+    Designed and Developed<br>by<br>GI SRE
+  </div>
+  
+  <!-- JavaScript to toggle the contact box -->
+  <script>
+    // Toggle the display of the contact box when clicking the Contact Us button.
+    document.getElementById("contact-btn").addEventListener("click", function(e) {
+      var box = document.getElementById("contact-box");
+      if (box.style.display === "none" || box.style.display === "") {
+        box.style.display = "block";
+      } else {
+        box.style.display = "none";
+      }
+      // Prevent the click event from bubbling up to the document
+      e.stopPropagation();
+    });
+    
+    // Hide the contact box when clicking anywhere outside it.
+    document.addEventListener("click", function(e) {
+      var box = document.getElementById("contact-box");
+      var btn = document.getElementById("contact-btn");
+      // If the click target is not inside the contact box or the button, hide the box.
+      if (box && btn && !box.contains(e.target) && !btn.contains(e.target)) {
+        box.style.display = "none";
+      }
+    });
+  </script>
+</body>
+</html>
