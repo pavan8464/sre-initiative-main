@@ -14,9 +14,13 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 
-# Import our utility modules and global variables
-from utils.checker import check_host, check_bulk_hosts, process_bulk_ports
-from utils.port_scanner import scan_ports, scan_bulk_ports
+# Utility modules and global variables
+from utils.checker import (
+    check_host,       # Single-host certificate check
+    check_bulk_hosts, # Bulk certificate check
+    process_bulk_ports
+)
+from utils.port_scanner import scan_ports, scan_bulk_ports  # Real-time port scanning
 from utils.emailer import send_alert
 from global_data import multi_scan_result, bulk_port_scan_result
 
@@ -24,17 +28,18 @@ app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = './uploads'
 app.secret_key = 'SRE_initiative'
 
+# Initialize Socket.IO (Eventlet)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', manage_session=True)
 
 ###############################
-#        HOME ROUTE
+# HOME ROUTE
 ###############################
 @app.route('/')
 def home():
     return render_template('index.html')
 
 ###############################
-#  Certificate Check: Single Host
+# Certificate Check: Single Host
 ###############################
 @app.route('/certificate_single', methods=['GET'])
 def certificate_single_form():
@@ -52,6 +57,7 @@ def certificate_single_check():
     except ValueError:
         flash("Invalid port number.", "error")
         return redirect(url_for('certificate_single_form'))
+
     result = check_host(hostname, port)
     single_result = {
         "hostname": hostname,
@@ -66,7 +72,7 @@ def certificate_single_check():
     return render_template('certificate_single_results.html', result=single_result)
 
 ###############################
-#  Certificate Check: Bulk Hosts
+# Certificate Check: Bulk Hosts
 ###############################
 @app.route('/certificate_bulk', methods=['GET'])
 def certificate_bulk_form():
@@ -74,14 +80,21 @@ def certificate_bulk_form():
 
 @app.route('/bulk', methods=['POST'])
 def bulk_check():
+    """
+    Handles CSV upload for bulk certificate checks,
+    then runs check_bulk_hosts synchronously, 
+    storing results in session.
+    """
     try:
         file = request.files.get('csv_file')
         if not file:
             flash('Please upload a CSV file.', 'error')
             return redirect(url_for('home'))
+
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
         file.save(filepath)
+
         results = check_bulk_hosts(filepath)
         session['results'] = results
         return redirect(url_for('bulk_results'))
@@ -91,11 +104,14 @@ def bulk_check():
 
 @app.route('/bulk_results')
 def bulk_results():
+    """
+    Displays the results from a bulk certificate check.
+    """
     results = session.get('results', [])
     return render_template('bulk_results.html', results=results)
 
 ###############################
-#  Port Check: Single Host
+# Port Check: Single Host
 ###############################
 @app.route('/port_single', methods=['GET'])
 def port_single_form():
@@ -103,67 +119,100 @@ def port_single_form():
 
 @app.route('/port_single_results')
 def port_single_results():
+    """
+    Displays the results of a single port scan 
+    (stored in multi_scan_result global).
+    """
     return render_template('port_single_results.html', result=multi_scan_result)
 
 ###############################
-#  Port Check: Bulk Hosts
+# Port Check: Bulk Hosts (Real-Time)
 ###############################
 @app.route('/port_bulk', methods=['GET'])
 def port_bulk_form():
+    """
+    Renders the CSV upload form for bulk port checks.
+    """
     return render_template('bulk_port.html')
 
 @app.route('/port_bulk_check', methods=['POST'])
 def port_bulk_check():
+    """
+    After CSV upload, start a background task for real-time port scanning 
+    using scan_bulk_ports, then redirect to the progress page.
+    """
     file = request.files.get('csv_file')
     if not file:
         flash("Please upload a CSV file.", "error")
         return redirect(url_for('port_bulk_form'))
+
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     file.save(filepath)
-    # Start the bulk port scan in a background task using Socket.IO
+
+    # Start the bulk port scan in a background thread/task
     socketio.start_background_task(scan_bulk_ports, filepath, socketio)
+
+    # Optional: store file path in session
     session['bulk_port_file'] = filepath
+
+    # Redirect to the real-time progress page
     return redirect(url_for('bulk_port_progress'))
 
 @app.route('/bulk_port_progress')
 def bulk_port_progress():
+    """
+    Renders a page with a progress bar that listens
+    for 'update'/'completion' events in the '/bulk' namespace.
+    """
     return render_template('bulk_port_progress.html')
 
 @socketio.on('start_bulk_port_scan', namespace='/bulk')
 def handle_start_bulk_port_scan(data):
+    """
+    If the client emits 'start_bulk_port_scan', 
+    we can start scanning from the server side.
+    """
     file_path = data.get('file_path')
     if file_path:
         scan_bulk_ports(file_path, socketio)
 
 @app.route('/bulk_port_results')
 def bulk_port_results():
+    """
+    Displays the final results from the global 
+    bulk_port_scan_result list after real-time scan is done.
+    """
     results = bulk_port_scan_result
     return render_template('bulk_port_results.html', results=results)
 
 ###############################
-#  Export Endpoints for Certificate Bulk Check Results
+# Export Endpoints for Certificate Bulk Check
 ###############################
 @app.route('/export_csv', methods=['GET'])
 def export_csv():
+    """
+    Exports results from session['results'] (bulk certificate checks) to CSV.
+    """
     results = session.get('results', [])
     si = StringIO()
     cw = csv.writer(si, quoting=csv.QUOTE_ALL)
-    cw.writerow(['Hostname', 'Port', 'Reachable', 'TLS Version', 'Certificate Expiry', 'Days Left', 'Certificate Issuer', 'Common Name', 'Certificate Type', 'Status'])
+    cw.writerow(['Hostname', 'Port', 'Reachable', 'TLS Version', 'Certificate Expiry',
+                 'Days Left', 'Certificate Issuer', 'Common Name', 'Certificate Type', 'Status'])
     
     for result in results:
         cert = result.get('certificate', {})
         common_name = cert.get('common_name', 'N/A') if isinstance(cert, dict) else 'N/A'
         cert_issuer = cert.get('issuer', 'N/A') if isinstance(cert, dict) else 'N/A'
         
-        # If cert_issuer is a dict, convert it to a string by joining its values
+        # If cert_issuer is a dict, convert it to a string
         if isinstance(cert_issuer, dict):
-            cert_issuer = ' '.join([str(v) for v in cert_issuer.values()])
+            cert_issuer = ' '.join(str(v) for v in cert_issuer.values())
         
-        # Clean up the string by replacing newline characters
+        # Clean up the string
         cert_issuer = cert_issuer.replace('\n', ' ').replace('\r', '')
         if cert_issuer != 'N/A':
-            cert_issuer = "'" + cert_issuer  # Prepend a single quote so Excel treats it as text.
+            cert_issuer = "'" + cert_issuer  # force Excel to treat as text
         
         cw.writerow([
             result.get('hostname', 'N/A'),
@@ -183,9 +232,11 @@ def export_csv():
     output.seek(0)
     return send_file(output, mimetype='text/csv', as_attachment=True, download_name='bulk_check_results.csv')
 
-
 @app.route('/export_pdf', methods=['GET'])
 def export_pdf():
+    """
+    Exports results from session['results'] (bulk certificate checks) to PDF.
+    """
     results = session.get('results', [])
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A3))
@@ -213,16 +264,14 @@ def export_pdf():
         certificate = result.get('certificate')
         cert_valid_to = certificate.get('valid_to', 'N/A') if isinstance(certificate, dict) else 'N/A'
         days_left = str(result.get('days_left', 'N/A'))
-        
+
         cert_issuer = certificate.get('issuer', 'N/A') if isinstance(certificate, dict) else 'N/A'
-        # If cert_issuer is a dict, convert it to a string by joining its values.
         if isinstance(cert_issuer, dict):
-            cert_issuer = ' '.join([str(v) for v in cert_issuer.values()])
-        # Clean up the string by replacing newline characters.
+            cert_issuer = ' '.join(str(v) for v in cert_issuer.values())
         cert_issuer = cert_issuer.replace('\n', ' ').replace('\r', '')
         if cert_issuer != 'N/A':
-            cert_issuer = "'" + cert_issuer  # Prepend a single quote so Excel treats it as text.
-        
+            cert_issuer = "'" + cert_issuer
+
         common_name = certificate.get('common_name', 'N/A') if isinstance(certificate, dict) else 'N/A'
         cert_type = result.get('certificate_type', 'N/A')
         status = result.get('status', 'N/A')
@@ -264,10 +313,13 @@ def export_pdf():
     return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name='bulk_check_results.pdf')
 
 ###############################
-#  Export Endpoints for Bulk Port Check Results
+# Export Endpoints for Bulk Port Check Results
 ###############################
 @app.route('/export_bulk_port_csv', methods=['GET'])
 def export_bulk_port_csv():
+    """
+    Exports bulk port scan results (bulk_port_scan_result) to CSV.
+    """
     results = bulk_port_scan_result
     si = StringIO()
     cw = csv.writer(si, quoting=csv.QUOTE_ALL)
@@ -286,6 +338,9 @@ def export_bulk_port_csv():
 
 @app.route('/export_bulk_port_pdf', methods=['GET'])
 def export_bulk_port_pdf():
+    """
+    Exports bulk port scan results (bulk_port_scan_result) to PDF.
+    """
     results = bulk_port_scan_result
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A3))
@@ -317,10 +372,13 @@ def export_bulk_port_pdf():
     return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name='bulk_port_results.pdf')
 
 ###############################
-#  Email Alert Route
+# Email Alert Route
 ###############################
 @app.route('/send_alert', methods=['POST'])
 def send_alert_route():
+    """
+    Sends an alert email with the status of a single host.
+    """
     try:
         recipients = request.form.get('recipients', '')
         hostname = request.form.get('hostname', '')
@@ -338,31 +396,40 @@ def send_alert_route():
 
 @app.route('/send_alert_page')
 def send_alert_page():
+    """
+    Renders a page showing a single host's result, 
+    with option to send email alerts to multiple recipients.
+    """
     hostname = request.args.get('hostname')
     recipients = request.args.get('recipients', '').split(',')
     result = check_host(hostname)
     return render_template('send_alert_page.html', hostname=hostname, recipients=recipients, result=result)
 
 ###############################
-#  Socket.IO Events
+# Socket.IO Events (Single Host Scans)
 ###############################
 @socketio.on('start_port_scan')
 def handle_start_port_scan(data):
+    """
+    Real-time single-host port scanning if triggered from the client side.
+    """
     hostname = data.get('hostname')
     start_port = int(data.get('start_port'))
     end_port = int(data.get('end_port'))
-    # only_ports=True means we scan for open ports without checking certificates
     scan_ports(hostname, start_port, end_port, socketio, only_ports=True)
 
 @socketio.on('start_scan')
 def handle_start_scan(data):
+    """
+    Real-time single-host full scan (ports + certificates).
+    """
     hostname = data.get('hostname')
-    start_port = data.get('start_port')
-    end_port = data.get('end_port')
+    start_port = int(data.get('start_port'))
+    end_port = int(data.get('end_port'))
     scan_ports(hostname, start_port, end_port, socketio)
 
 ###############################
-#  Main
+# Main
 ###############################
 if __name__ == '__main__':
     socketio.run(app, debug=True, use_reloader=False, port=5000)

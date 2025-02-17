@@ -3,12 +3,15 @@ import socket
 import warnings
 import csv
 import os
-import time  # Added for timing measurements
+import time  # For timing measurements
 from datetime import datetime, timezone
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.x509.oid import NameOID
 import concurrent.futures
+
+# If you store final results in a global variable:
+from global_data import bulk_port_scan_result
 
 ##############################################
 #   Basic Network and Certificate Functions  #
@@ -24,7 +27,7 @@ def check_network_connection(hostname, port, timeout=3):
 def is_self_signed(cert):
     if not cert:
         return False
-    # A simple comparison: if issuer equals subject, assume self-signed.
+    # A simple comparison: if issuer == subject, assume self-signed.
     return cert.get("issuer") == cert.get("subject")
 
 ##############################################
@@ -34,11 +37,10 @@ def is_self_signed(cert):
 def get_tls_and_certificate_details(hostname, port=443):
     """
     Legacy method using getpeercert() to extract TLS version and certificate details.
-    (Not used in the optimized code.)
+    (Retained here for completeness; not usually needed now.)
     """
     try:
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-        # Restrict to modern TLS versions.
         versions = {
             'TLSv1.2': ssl.TLSVersion.TLSv1_2,
             'TLSv1.3': ssl.TLSVersion.TLSv1_3
@@ -78,9 +80,11 @@ def get_tls_and_certificate_details(hostname, port=443):
             with context.wrap_socket(sock, server_hostname=hostname) as ssock:
                 cert = ssock.getpeercert()
                 cert_details = extract_cert_details(cert)
+
         if not is_self_signed(cert):
             return supported_versions, cert_details
-        # Handle self-signed certificates.
+
+        # Handle self-signed
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
         with socket.create_connection((hostname, port), timeout=3) as sock:
@@ -88,13 +92,13 @@ def get_tls_and_certificate_details(hostname, port=443):
                 cert = ssock.getpeercert()
                 cert_details = extract_cert_details(cert)
         return supported_versions, cert_details
-    except Exception as e:
+    except Exception:
         return None, None
 
 def determine_cert_status(cert_valid_to):
     """
-    Given a certificate expiry string (e.g. "Apr 14 08:36:03 2025 GMT"),
-    determine the status and the number of days left.
+    Given a cert expiry string (e.g. "Apr 14 08:36:03 2025 GMT"), 
+    determine status + days left.
     """
     if not cert_valid_to:
         return "Invalid", None
@@ -104,20 +108,19 @@ def determine_cert_status(cert_valid_to):
         if days_left < 0:
             return "Expired", days_left
         elif days_left <= 30:
-            return f"Expiring Soon ({days_left} days left)", days_left
-        return f"Valid ({days_left} days left)", days_left
+            return f"Expiring Soon ({days_left} days)", days_left
+        return f"Valid ({days_left} days)", days_left
     except Exception as e:
         print(f"Error determining certificate status: {e}")
         return "Invalid", None
 
 ##############################################
-#   New DER-based Certificate Extraction     #
+#   DER-based Certificate Extraction         #
 ##############################################
 
 def get_der_certificate(hostname, port=443, timeout=3):
     """
-    Attempts to get the DER-encoded certificate from the host.
-    Uses the wrapped socket’s getpeercert(binary_form=True), or falls back to PEM conversion.
+    Attempts to get the DER-encoded certificate from the host (binary_form=True).
     """
     try:
         context = ssl._create_unverified_context()
@@ -128,7 +131,7 @@ def get_der_certificate(hostname, port=443, timeout=3):
                     return der_cert
     except Exception:
         pass
-    # Fallback using get_server_certificate (returns PEM)
+    # fallback to get_server_certificate -> convert PEM -> DER
     try:
         pem_cert = ssl.get_server_certificate((hostname, port))
         der_cert = ssl.PEM_cert_to_DER_cert(pem_cert)
@@ -138,21 +141,17 @@ def get_der_certificate(hostname, port=443, timeout=3):
 
 def parse_der_cert(der_cert):
     """
-    Parses a DER-encoded certificate using the cryptography library and
-    returns a dictionary with certificate details.
+    Parses DER-encoded cert -> dictionary
     """
     cert_obj = x509.load_der_x509_certificate(der_cert, default_backend())
-    
-    # Build subject dictionary.
     subject = {}
     for attribute in cert_obj.subject:
         try:
-            key = attribute.oid._name  # friendly name if available
+            key = attribute.oid._name
         except AttributeError:
             key = attribute.oid.dotted_string
         subject[key] = attribute.value
 
-    # Build issuer dictionary.
     issuer = {}
     for attribute in cert_obj.issuer:
         try:
@@ -161,37 +160,31 @@ def parse_der_cert(der_cert):
             key = attribute.oid.dotted_string
         issuer[key] = attribute.value
 
-    # Get common name (if available)
     try:
         common_name = cert_obj.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
     except Exception:
         common_name = None
 
-    # Use new UTC properties to avoid deprecation warnings.
     expiry_date = cert_obj.not_valid_after_utc
     expiry_str = expiry_date.strftime("%b %d %H:%M:%S %Y GMT")
-    
     valid_from = cert_obj.not_valid_before_utc
     valid_from_str = valid_from.strftime("%b %d %H:%M:%S %Y GMT")
-    
     return {
         "subject": subject,
         "issuer": issuer,
         "common_name": common_name,
-        "valid_from": valid_from_str, 
-        "valid_to": expiry_str,        # For export purposes.
-        "expiry_date": expiry_date     # For internal calculation.
+        "valid_from": valid_from_str,
+        "valid_to": expiry_str,
+        "expiry_date": expiry_date
     }
 
 def get_supported_tls_versions(hostname, port=443, timeout=3):
     """
-    Attempts to connect to the host while forcing different TLS versions.
-    Returns a list of TLS version strings that the host supports.
+    Force TLS versions to see what's supported.
     """
     supported = []
     try:
         from ssl import TLSVersion
-        # Limit to modern versions.
         tls_versions = [TLSVersion.TLSv1_2, TLSVersion.TLSv1_3]
         version_names = {
             TLSVersion.TLSv1_2: "TLSv1.2",
@@ -210,10 +203,8 @@ def get_supported_tls_versions(hostname, port=443, timeout=3):
             except Exception:
                 pass
     except ImportError:
-        # Fallback if TLSVersion is not available.
-        protocols = [
-            (ssl.PROTOCOL_TLSv1_2, "TLSv1.2"),
-        ]
+        # fallback for older Pythons
+        protocols = [(ssl.PROTOCOL_TLSv1_2, "TLSv1.2")]
         for proto, name in protocols:
             try:
                 context = ssl.SSLContext(proto)
@@ -232,13 +223,7 @@ def get_supported_tls_versions(hostname, port=443, timeout=3):
 
 def check_host(hostname, port=443):
     """
-    Checks a host's certificate details:
-      - Verifies network connectivity.
-      - Retrieves supported TLS versions.
-      - Obtains and parses the DER-encoded certificate.
-      - Calculates days left until expiry.
-      - Determines if the certificate is self-signed.
-      - Records the time taken for the check.
+    Main function to check a host's certificate + expiry + TLS versions.
     """
     start_time = time.perf_counter()
     result = {
@@ -251,20 +236,16 @@ def check_host(hostname, port=443):
         'days_left': None,
         'common_name': None,
         'certificate_type': None,
-        'time_taken': None  # New field to record check duration
+        'time_taken': None
     }
     try:
-        # Check network connectivity.
         reachable = check_network_connection(hostname, port, timeout=3)
         result['reachable'] = reachable
         if not reachable:
             result['status'] = "Host Unreachable"
             return result
 
-        # Get supported TLS versions.
         result['tls_version'] = get_supported_tls_versions(hostname, port, timeout=3)
-
-        # Retrieve the DER-encoded certificate.
         der_cert = get_der_certificate(hostname, port, timeout=3)
         if der_cert:
             parsed_cert = parse_der_cert(der_cert)
@@ -274,17 +255,13 @@ def check_host(hostname, port=443):
         if parsed_cert:
             subject = parsed_cert.get("subject", {})
             issuer = parsed_cert.get("issuer", {})
-            result['common_name'] = parsed_cert.get("common_name", None)
-            
-            # Determine if the certificate is self-signed.
+            result['common_name'] = parsed_cert.get("common_name")
             if subject and issuer and subject == issuer:
                 result['certificate_type'] = "Self Signed"
             else:
                 result['certificate_type'] = "Not Self Signed"
-
             result['certificate'] = parsed_cert
 
-            # Calculate certificate expiry details.
             expiry_date = parsed_cert.get("expiry_date")
             if expiry_date:
                 now = datetime.now(timezone.utc)
@@ -298,17 +275,75 @@ def check_host(hostname, port=443):
     except Exception as e:
         result['status'] = "Error: " + str(e)
         result['days_left'] = None
+
     end_time = time.perf_counter()
     elapsed = end_time - start_time
     result['time_taken'] = elapsed
-    print(f"Host {hostname}:{port} checked in {elapsed:.2f} seconds")
+    print(f"Host {hostname}:{port} checked in {elapsed:.2f} seconds", flush=True)
     return result
 
 ##############################################
-#   Bulk Processing Functions                #
+#   Bulk Processing Functions (Synchronous)  #
+##############################################
+
+def check_open_ports(host, start_port, end_port):
+    """
+    Scans [start_port, end_port] and returns list of open ports.
+    """
+    open_ports = []
+    for port in range(start_port, end_port + 1):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.5)
+                if s.connect_ex((host, port)) == 0:
+                    open_ports.append(port)
+        except Exception:
+            continue
+    return open_ports
+
+def process_bulk_ports(file_path):
+    """
+    Synchronous function that scans open ports for each row in CSV.
+    Splits multiple hostnames if needed.
+    """
+    print("BEBUG: process_bulk_ports is called", flush=True)
+    results = []
+    try:
+        with open(file_path, mode='r', newline='') as csv_file:
+            csv_reader = csv.DictReader(csv_file)
+            for idx, row in enumerate(csv_reader, start=1):
+                hostname_field = row.get('hostname')
+                if not hostname_field:
+                    continue
+                try:
+                    start_port = int(row.get('start_port'))
+                    end_port = int(row.get('end_port'))
+                except ValueError:
+                    continue
+
+                hostnames = [h.strip() for h in hostname_field.split(',') if h.strip()]
+
+                for hostname in hostnames:
+                    open_ports_found = check_open_ports(hostname, start_port, end_port)
+                    print(f"BEBUG : {hostname} : {open_ports_found}", flush=True)
+                    results.append({
+                        "hostname": hostname,
+                        "start_port": start_port,
+                        "end_port": end_port,
+                        "open_ports": open_ports_found
+                    })
+    except Exception as e:
+        print(f"Error processing bulk ports: {e}", flush=True)
+    return results
+
+##############################################
+#   Bulk Processing: Certificates in Parallel
 ##############################################
 
 def process_bulk_hosts(file_path):
+    """
+    Synchronously processes a CSV of hosts for certificate checks in parallel.
+    """
     overall_start = time.perf_counter()
     results = []
     try:
@@ -322,20 +357,20 @@ def process_bulk_hosts(file_path):
                     hostname_field = row.get('hostname')
                     if not hostname_field:
                         continue
-                    # Support multiple hosts in one cell (comma-separated)
+                    # multiple hostnames
                     hostnames = [h.strip() for h in hostname_field.split(",") if h.strip()]
                     try:
                         port = int(row.get('port', 443))
                     except ValueError:
                         port = 443
+
                     for hostname in hostnames:
-                        print(f"Processing row {idx}: hostname {hostname}, port {port}")
+                        print(f"Processing row {idx}: hostname {hostname}, port {port}", flush=True)
                         tasks.append(executor.submit(check_host, hostname, port))
+
                 for future in concurrent.futures.as_completed(tasks):
                     result = future.result()
                     if result:
-                        # Optionally add recipient information from the CSV row
-                        result['recipients'] = row.get('recipients')
                         cert = result.get('certificate')
                         if cert and cert != "N/A":
                             if is_self_signed(cert):
@@ -347,50 +382,94 @@ def process_bulk_hosts(file_path):
                         results.append(result)
         overall_end = time.perf_counter()
         total_time = overall_end - overall_start
-        print(f"Processed bulk hosts in {total_time:.2f} seconds")
+        print(f"Processed bulk hosts in {total_time:.2f} seconds", flush=True)
     except FileNotFoundError:
-        print(f"Error: File not found at path {file_path}")
+        print(f"Error: File not found at path {file_path}", flush=True)
     except Exception as e:
-        print(f"Error processing bulk hosts: {e}")
-    return results
-
-def check_open_ports(host, start_port, end_port):
-    open_ports = []
-    for port in range(start_port, end_port + 1):
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(0.5)
-                result = s.connect_ex((host, port))
-                if result == 0:
-                    open_ports.append(port)
-        except Exception:
-            continue
-    return open_ports
-
-def process_bulk_ports(file_path):
-    results = []
-    try:
-        with open(file_path, mode='r') as csv_file:
-            csv_reader = csv.DictReader(csv_file)
-            for idx, row in enumerate(csv_reader, start=1):
-                hostname = row.get('hostname')
-                try:
-                    start_port = int(row.get('start_port', 0))
-                    end_port = int(row.get('end_port', 0))
-                except ValueError:
-                    continue
-                if not hostname or start_port == 0 or end_port == 0:
-                    continue
-                open_ports = check_open_ports(hostname, start_port, end_port)
-                results.append({
-                    "hostname": hostname,
-                    "start_port": start_port,
-                    "end_port": end_port,
-                    "open_ports": open_ports
-                })
-    except Exception as e:
-        print(f"Error processing bulk ports: {e}")
+        print(f"Error processing bulk hosts: {e}", flush=True)
     return results
 
 def check_bulk_hosts(file_path):
     return process_bulk_hosts(file_path)
+
+##############################################
+#   ASYNC Bulk Port Scanning with Socket.IO
+##############################################
+
+def scan_bulk_ports(file_path, socketio):
+    """
+    Reads a CSV of (hostname, start_port, end_port).
+    Splits multiple hosts in one cell. 
+    Emits real-time progress events (similar to bulk cert check).
+    Stores final results in 'bulk_port_scan_result'.
+    """
+    try:
+        # Clear old results
+        bulk_port_scan_result.clear()
+
+        # Read entire CSV first to count total *hostnames*
+        with open(file_path, mode='r', newline='') as csv_file:
+            csv_reader = csv.DictReader(csv_file)
+            rows = list(csv_reader)
+
+        total_hosts = 0
+        for row in rows:
+            hostname_field = row.get('hostname', '')
+            splitted = [h.strip() for h in hostname_field.split(',') if h.strip()]
+            total_hosts += len(splitted)
+
+        if total_hosts == 0:
+            socketio.emit('update', {
+                'message': "No valid hostnames found in CSV.",
+                'progress': 100
+            }, namespace='/bulk')
+            return
+
+        completed = 0
+
+        # Start scanning each row
+        for row_idx, row in enumerate(rows, start=1):
+            hostname_field = row.get('hostname', '')
+            start_port_str = row.get('start_port', '0')
+            end_port_str   = row.get('end_port', '0')
+
+            try:
+                start_port = int(start_port_str)
+                end_port   = int(end_port_str)
+            except ValueError:
+                continue
+
+            # Split multiple hostnames
+            splitted_hosts = [h.strip() for h in hostname_field.split(',') if h.strip()]
+            for hostname in splitted_hosts:
+                open_ports = check_open_ports(hostname, start_port, end_port)
+
+                # Add to global results
+                result_entry = {
+                    "hostname": hostname,
+                    "start_port": start_port,
+                    "end_port": end_port,
+                    "open_ports": open_ports
+                }
+                bulk_port_scan_result.append(result_entry)
+
+                # Update progress
+                completed += 1
+                progress = int((completed / total_hosts) * 100)
+                socketio.emit('update', {
+                    'message': f"Scanning {hostname} ({completed}/{total_hosts})",
+                    'progress': progress
+                }, namespace='/bulk')
+
+                time.sleep(0.1)  # small delay for demo; remove or adjust in production
+
+        # Once done
+        socketio.emit('completion', {
+            'message': "Bulk port scanning complete!"
+        }, namespace='/bulk')
+
+    except Exception as e:
+        socketio.emit('update', {
+            'message': f"Error during bulk scan: {e}",
+            'progress': 100
+        }, namespace='/bulk')
