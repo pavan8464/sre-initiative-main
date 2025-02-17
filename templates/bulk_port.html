@@ -11,6 +11,21 @@
       margin: 0;
       padding: 0;
     }
+    .sample-file {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background-color: #1ba3dd;
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 4px;
+      text-decoration: none;
+      font-size: 16px;
+      z-index: 1000;
+    }
+    .sample-file:hover {
+      background-color: #3b73af;
+    }
     .container {
       max-width: 500px;
       margin: 50px auto;
@@ -69,6 +84,7 @@
   </style>
 </head>
 <body>
+  <a href="{{ url_for('static', filename='sample_ports.csv') }}" class="sample-file" download>Sample File</a>
   <div class="container">
     <h1>Port Check for Bulk Hosts</h1>
     <form action="{{ url_for('port_bulk_check') }}" method="POST" enctype="multipart/form-data">
