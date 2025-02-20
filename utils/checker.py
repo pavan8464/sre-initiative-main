@@ -26,23 +26,95 @@ def is_self_signed(cert):
     return cert.get("issuer") == cert.get("subject")
 
 
+# def get_tls_and_certificate_details(hostname, port=443):
+#     """
+#     Legacy method using getpeercert() to extract TLS version and certificate details.
+#     (Retained here for completeness; not usually needed now.)
+#     """
+#     try:
+#         warnings.filterwarnings("ignore", category=DeprecationWarning)
+#         versions = {
+#             'TLSv1.2': ssl.TLSVersion.TLSv1_2,
+#             'TLSv1.3': ssl.TLSVersion.TLSv1_3
+#         }
+#         supported_versions = []
+#         for version_name, version in versions.items():
+#             try:
+#                 context = ssl.create_default_context()
+#                 context.minimum_version = version
+#                 context.maximum_version = version
+#                 with socket.create_connection((hostname, port), timeout=3) as conn:
+#                     with context.wrap_socket(conn, server_hostname=hostname) as sock:
+#                         cert = sock.getpeercert()
+#                         if cert and not is_self_signed(cert):
+#                             supported_versions.append(version_name)
+#             except (ssl.SSLError, socket.timeout):
+#                 continue
+
+#         def extract_cert_details(cert):
+#             issuer_details = "\n".join(
+#                 f"- {name}: {value}" for item in cert.get('issuer', []) for name, value in item
+#             )
+#             common_name = next(
+#                 (value for field in cert.get("subject", []) for key, value in field if key == "commonName"),
+#                 "Unknown"
+#             )
+#             return {
+#                 'valid_from': cert.get('notBefore', 'Unknown'),
+#                 'valid_to': cert.get('notAfter', 'Unknown'),
+#                 'issuer': issuer_details,
+#                 'subject': cert.get('subject', []),
+#                 'common_name': common_name
+#             }
+
+#         context = ssl.create_default_context()
+#         with socket.create_connection((hostname, port), timeout=3) as sock:
+#             with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+#                 cert = ssock.getpeercert()
+#                 cert_details = extract_cert_details(cert)
+
+#         if not is_self_signed(cert):
+#             return supported_versions, cert_details
+
+#         # Handle self-signed
+#         context.check_hostname = False
+#         context.verify_mode = ssl.CERT_NONE
+#         with socket.create_connection((hostname, port), timeout=3) as sock:
+#             with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+#                 cert = ssock.getpeercert()
+#                 cert_details = extract_cert_details(cert)
+#         return supported_versions, cert_details
+#     except Exception:
+#         return None, None
 def get_tls_and_certificate_details(hostname, port=443):
-    """
-    Legacy method using getpeercert() to extract TLS version and certificate details.
-    (Retained here for completeness; not usually needed now.)
-    """
     try:
         warnings.filterwarnings("ignore", category=DeprecationWarning)
-        versions = {
-            'TLSv1.2': ssl.TLSVersion.TLSv1_2,
-            'TLSv1.3': ssl.TLSVersion.TLSv1_3
-        }
+        
+        # Try to import TLSVersion (available in Python 3.7+)
+        # Fallback: if older Python, you can handle it below with ssl.PROTOCOL_TLSv1, etc.
+        try:
+            from ssl import TLSVersion
+            versions = {
+                'TLSv1.0': TLSVersion.TLSv1,
+                'TLSv1.1': TLSVersion.TLSv1_1,
+                'TLSv1.2': TLSVersion.TLSv1_2,
+                'TLSv1.3': TLSVersion.TLSv1_3
+            }
+        except ImportError:
+            # Fallback for older Python that doesn't have TLSVersion
+            # You can use ssl.PROTOCOL_TLSv1, etc. or skip older TLS versions.
+            versions = {}
+
         supported_versions = []
+
+        # Attempt each version
         for version_name, version in versions.items():
             try:
                 context = ssl.create_default_context()
+                # Force both minimum and maximum version to the same TLS version
                 context.minimum_version = version
                 context.maximum_version = version
+
                 with socket.create_connection((hostname, port), timeout=3) as conn:
                     with context.wrap_socket(conn, server_hostname=hostname) as sock:
                         cert = sock.getpeercert()
@@ -53,7 +125,9 @@ def get_tls_and_certificate_details(hostname, port=443):
 
         def extract_cert_details(cert):
             issuer_details = "\n".join(
-                f"- {name}: {value}" for item in cert.get('issuer', []) for name, value in item
+                f"- {name}: {value}" 
+                for item in cert.get('issuer', []) 
+                for name, value in item
             )
             common_name = next(
                 (value for field in cert.get("subject", []) for key, value in field if key == "commonName"),
@@ -67,6 +141,7 @@ def get_tls_and_certificate_details(hostname, port=443):
                 'common_name': common_name
             }
 
+        # Now, extract the certificate details using default context
         context = ssl.create_default_context()
         with socket.create_connection((hostname, port), timeout=3) as sock:
             with context.wrap_socket(sock, server_hostname=hostname) as ssock:
@@ -76,16 +151,19 @@ def get_tls_and_certificate_details(hostname, port=443):
         if not is_self_signed(cert):
             return supported_versions, cert_details
 
-        # Handle self-signed
+        # If it's self-signed, try again ignoring hostname checks
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
         with socket.create_connection((hostname, port), timeout=3) as sock:
             with context.wrap_socket(sock, server_hostname=hostname) as ssock:
                 cert = ssock.getpeercert()
                 cert_details = extract_cert_details(cert)
+
         return supported_versions, cert_details
+
     except Exception:
         return None, None
+
 
 def determine_cert_status(cert_valid_to):
     """
