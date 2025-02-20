@@ -1,0 +1,5 @@
+flask
+cryptography
+flask_socketio
+reportlab
+eventlet

@@ -1,5 +1,5 @@
 import eventlet
-eventlet.monkey_patch()  # MUST be the very first lines in your file!
+eventlet.monkey_patch()  
 
 import os
 import sys
@@ -17,8 +17,8 @@ from reportlab.lib.units import inch
 # Utility modules and global variables
 from utils.checker import (
     check_host,       # Single-host certificate check
-    check_bulk_hosts, # Bulk certificate check
-    process_bulk_ports
+    check_bulk_hosts # Bulk certificate check
+    # process_bulk_ports
 )
 from utils.port_scanner import scan_ports, scan_bulk_ports  # Real-time port scanning
 from utils.emailer import send_alert

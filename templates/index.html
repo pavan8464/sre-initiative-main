@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <title>SRE Toolkit Home</title>
   <!-- Link to the external stylesheet -->
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='sre_favicon.ico') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
   <!-- Example Google Font for signature; change as desired -->
   <link href="https://fonts.googleapis.com/css2?family=Satisfy&display=swap" rel="stylesheet">
@@ -19,12 +20,15 @@
   <!-- Contact Us Button (fixed at top right) -->
   <div class="contact-us">
     <button id="contact-btn">Contact Us</button>
-    <!-- Added id="contact-box" so JS can toggle this element -->
     <div id="contact-box" class="contact-box">
-      <p>Please drop an email to the below email:</p>
-      <div class="email-address">GI_prod_mgmt_cloud_SRE@aig.com</div>
+      <p>Please send an email to the address below:</p><br>
+      <div class="email-address">
+        <!-- <img src="{{ url_for('static', filename='images/email_icon.png') }}" alt="Email Icon" class="email-icon"> -->
+        GI_prod_mgmt_cloud_SRE@aig.com
+      </div>
     </div>
   </div>
+  
   
   <!-- Main Content -->
   <div class="content">

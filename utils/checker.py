@@ -3,19 +3,14 @@ import socket
 import warnings
 import csv
 import os
-import time  # For timing measurements
+import time  
 from datetime import datetime, timezone
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.x509.oid import NameOID
 import concurrent.futures
-
-# If you store final results in a global variable:
 from global_data import bulk_port_scan_result
 
-##############################################
-#   Basic Network and Certificate Functions  #
-##############################################
 
 def check_network_connection(hostname, port, timeout=3):
     try:
@@ -30,9 +25,6 @@ def is_self_signed(cert):
     # A simple comparison: if issuer == subject, assume self-signed.
     return cert.get("issuer") == cert.get("subject")
 
-##############################################
-#   Legacy TLS & Certificate Extraction      #
-##############################################
 
 def get_tls_and_certificate_details(hostname, port=443):
     """
@@ -114,9 +106,6 @@ def determine_cert_status(cert_valid_to):
         print(f"Error determining certificate status: {e}")
         return "Invalid", None
 
-##############################################
-#   DER-based Certificate Extraction         #
-##############################################
 
 def get_der_certificate(hostname, port=443, timeout=3):
     """
@@ -178,15 +167,48 @@ def parse_der_cert(der_cert):
         "expiry_date": expiry_date
     }
 
+# def get_supported_tls_versions(hostname, port=443, timeout=3):
+#     supported = []
+#     try:
+#         from ssl import TLSVersion
+#         tls_versions = [TLSVersion.TLSv1_2, TLSVersion.TLSv1_3]
+#         version_names = {
+#             TLSVersion.TLSv1_2: "TLSv1.2",
+#             TLSVersion.TLSv1_3: "TLSv1.3",
+#         }
+#         for ver in tls_versions:
+#             try:
+#                 context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+#                 context.check_hostname = False
+#                 context.verify_mode = ssl.CERT_NONE
+#                 context.minimum_version = ver
+#                 context.maximum_version = ver
+#                 with socket.create_connection((hostname, port), timeout=timeout) as sock:
+#                     with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+#                         supported.append(version_names[ver])
+#             except Exception:
+#                 pass
+#     except ImportError:
+#         protocols = [(ssl.PROTOCOL_TLSv1_2, "TLSv1.2")]
+#         for proto, name in protocols:
+#             try:
+#                 context = ssl.SSLContext(proto)
+#                 context.check_hostname = False
+#                 context.verify_mode = ssl.CERT_NONE
+#                 with socket.create_connection((hostname, port), timeout=timeout) as sock:
+#                     with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+#                         supported.append(name)
+#             except Exception:
+#                 pass
+#     return supported
 def get_supported_tls_versions(hostname, port=443, timeout=3):
-    """
-    Force TLS versions to see what's supported.
-    """
     supported = []
     try:
         from ssl import TLSVersion
-        tls_versions = [TLSVersion.TLSv1_2, TLSVersion.TLSv1_3]
+        tls_versions = [TLSVersion.TLSv1, TLSVersion.TLSv1_1, TLSVersion.TLSv1_2, TLSVersion.TLSv1_3]
         version_names = {
+            TLSVersion.TLSv1:   "TLSv1.0",
+            TLSVersion.TLSv1_1: "TLSv1.1",
             TLSVersion.TLSv1_2: "TLSv1.2",
             TLSVersion.TLSv1_3: "TLSv1.3",
         }
@@ -195,17 +217,26 @@ def get_supported_tls_versions(hostname, port=443, timeout=3):
                 context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
                 context.check_hostname = False
                 context.verify_mode = ssl.CERT_NONE
+                
                 context.minimum_version = ver
                 context.maximum_version = ver
+
                 with socket.create_connection((hostname, port), timeout=timeout) as sock:
                     with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                        
                         supported.append(version_names[ver])
             except Exception:
                 pass
+
     except ImportError:
-        # fallback for older Pythons
-        protocols = [(ssl.PROTOCOL_TLSv1_2, "TLSv1.2")]
+        protocols = [
+            (ssl.PROTOCOL_TLSv1,  "TLSv1.0"), 
+            (getattr(ssl, "PROTOCOL_TLSv1_1", None), "TLSv1.1"), 
+            (ssl.PROTOCOL_TLSv1_2, "TLSv1.2"),
+        ]
         for proto, name in protocols:
+            if not proto:
+                continue  
             try:
                 context = ssl.SSLContext(proto)
                 context.check_hostname = False
@@ -215,11 +246,9 @@ def get_supported_tls_versions(hostname, port=443, timeout=3):
                         supported.append(name)
             except Exception:
                 pass
+
     return supported
 
-##############################################
-#   Main Certificate Check Function          #
-##############################################
 
 def check_host(hostname, port=443):
     """
@@ -282,9 +311,6 @@ def check_host(hostname, port=443):
     print(f"Host {hostname}:{port} checked in {elapsed:.2f} seconds", flush=True)
     return result
 
-##############################################
-#   Bulk Processing Functions (Synchronous)  #
-##############################################
 
 def check_open_ports(host, start_port, end_port):
     """
@@ -336,9 +362,6 @@ def process_bulk_ports(file_path):
         print(f"Error processing bulk ports: {e}", flush=True)
     return results
 
-##############################################
-#   Bulk Processing: Certificates in Parallel
-##############################################
 
 def process_bulk_hosts(file_path):
     """
@@ -392,9 +415,6 @@ def process_bulk_hosts(file_path):
 def check_bulk_hosts(file_path):
     return process_bulk_hosts(file_path)
 
-##############################################
-#   ASYNC Bulk Port Scanning with Socket.IO
-##############################################
 
 def scan_bulk_ports(file_path, socketio):
     """
