@@ -13,6 +13,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
+import subprocess, platform
 
 # Utility modules and global variables
 from utils.checker import (
@@ -427,6 +428,26 @@ def handle_start_scan(data):
     start_port = int(data.get('start_port'))
     end_port = int(data.get('end_port'))
     scan_ports(hostname, start_port, end_port, socketio)
+
+
+@app.route('/ping', methods=['GET', 'POST'])
+def ping():
+    result = None
+    hostname = ''
+    if request.method == 'POST':
+        hostname = request.form['hostname']
+        if platform.system().lower() == 'windows':
+            command = ['ping', '-4', hostname]
+        else:
+            command = ['ping', '-c', '4', '-4', hostname]
+        try:
+            output = subprocess.check_output(command, universal_newlines=True)
+            result = output
+        except subprocess.CalledProcessError:
+            result = f"Failed to reach {hostname}."
+        except Exception as e:
+            result = str(e)
+    return render_template('common_checks.html', hostname=hostname, result=result)
 
 ###############################
 # Main

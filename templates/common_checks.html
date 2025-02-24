@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ping Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .ping-form {
+            margin-bottom: 20px;
+        }
+        .ping-result {
+            background-color: #000;
+            color: #0f0;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', Courier, monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>Ping Test</h1>
+    <div class="ping-form">
+        <form method="post" action="/ping">
+            <label for="hostname">Enter Hostname or IP Address:</label>
+            <input type="text" id="hostname" name="hostname" value="{{ hostname }}" required>
+            <button type="submit">Check Ping Status</button>
+        </form>
+    </div>
+    {% if result %}
+        <div class="ping-result">
+            {{ result }}
+        </div>
+    {% endif %}
+</body>
+</html>
