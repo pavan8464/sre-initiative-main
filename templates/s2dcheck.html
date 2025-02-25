@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Ping Test</title>
+  <title>Connectivity Checker</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -25,12 +25,12 @@
       font-size: 24px;
     }
     label {
-      display: block;
       font-size: 16px;
       margin-bottom: 5px;
       color: #333;
     }
-    input[type="text"] {
+    input[type="text"],
+    input[type="number"] {
       width: 100%;
       padding: 10px;
       margin-bottom: 15px;
@@ -39,53 +39,74 @@
       font-size: 16px;
       box-sizing: border-box;
     }
+    .inline-group {
+      display: flex;
+      gap: 10px;
+    }
+    .inline-group > div {
+      flex: 1;
+    }
     .button-container {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      margin-top: 20px;
     }
-    .button-container button, .button-container a {
+    .button-container button {
       padding: 10px 20px;
       border: none;
       border-radius: 4px;
       font-size: 16px;
       cursor: pointer;
       color: #fff;
-      text-decoration: none;
     }
     .submit-btn {
       background-color: #1ba3dd;
     }
     .back-btn {
       background-color: #6c757d;
+      text-decoration: none;
+      text-align: center;
+      padding: 10px 20px;
+      color: #fff;
+      border-radius: 4px;
     }
-    .ping-result {
-      background-color: #000;
-      color: #0f0;
-      padding: 15px;
-      border-radius: 5px;
-      font-family: 'Courier New', Courier, monospace;
-      white-space: pre-wrap;
+    .result {
       margin-top: 20px;
+      text-align: center;
+      font-size: 16px;
+      color: #333;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Ping Test</h1>
-    <div class="ping-form">
-      <form method="post" action="/ping">
-        <label for="hostname">Enter Hostname or IP Address:</label>
-        <input type="text" id="hostname" name="hostname" value="{{ hostname }}" required>
-        <div class="button-container">
-          <button type="submit" class="submit-btn">Check Ping Status</button>
-          <a href="{{ url_for('home') }}" class="back-btn">Back to Home</a>
+    <h1>Connectivity Checker</h1>
+    <form method="post" action="/s2dcheck">
+      <div class="inline-group">
+        <div>
+          <label for="source">Source IP:</label>
+          <input type="text" id="source" name="source" required>
         </div>
-      </form>
-    </div>
+        <div>
+          <label for="port">Port:</label>
+          <input type="text" id="port" name="port" required>
+        </div>
+      </div>
+      
+      <label for="destination">Destination IP:</label>
+      <input type="text" id="destination" name="destination" required>
+      
+      <div class="button-container">
+        <button type="submit" class="submit-btn">Check Connectivity</button>
+        <a href="{{ url_for('home') }}" class="back-btn">Back to Home</a>
+      </div>
+    </form>
+    
     {% if result %}
-      <div class="ping-result">
-        {{ result }}
+      <div class="result">
+        <h3>Result:</h3>
+        <p>{{ result }}</p>
       </div>
     {% endif %}
   </div>

@@ -1,3 +1,4 @@
+import socket
 import eventlet
 eventlet.monkey_patch()  
 
@@ -448,6 +449,36 @@ def ping():
         except Exception as e:
             result = str(e)
     return render_template('common_checks.html', hostname=hostname, result=result)
+
+#s2d
+@app.route('/s2dcheck', methods=['GET', 'POST'])
+def s2dcheck():
+    result = None
+    if request.method == 'POST':
+        source = request.form.get('source')
+        port = request.form.get('port')
+        destination = request.form.get('destination')
+        
+        try:
+            port = int(port)
+        except ValueError:
+            result = "Invalid port number. Please enter a numeric port."
+            return render_template('s2dcheck.html', result=result)
+        
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(5)  # Timeout after 5 seconds
+        try:
+            # Bind the socket to the provided source IP (OS will choose the port)
+            s.bind((source, 0))
+            s.connect((destination, port))
+            result = "Connection successful!"
+        except Exception as e:
+            result = f"Connection failed: {e}"
+        finally:
+            s.close()
+    
+    return render_template('s2dcheck.html', result=result)
+
 
 ###############################
 # Main
