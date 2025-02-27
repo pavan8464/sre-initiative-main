@@ -433,22 +433,34 @@ def handle_start_scan(data):
 
 @app.route('/ping', methods=['GET', 'POST'])
 def ping():
-    result = None
+    ping_result = None
+    nslookup_result = None
     hostname = ''
     if request.method == 'POST':
         hostname = request.form['hostname']
+        
+        # Ping Command
         if platform.system().lower() == 'windows':
-            command = ['ping', '-4', hostname]
+            ping_command = ['ping', '-4', hostname]
         else:
-            command = ['ping', '-c', '4', '-4', hostname]
+            ping_command = ['ping', '-c', '4', '-4', hostname]
         try:
-            output = subprocess.check_output(command, universal_newlines=True)
-            result = output
+            ping_result = subprocess.check_output(ping_command, universal_newlines=True)
         except subprocess.CalledProcessError:
-            result = f"Failed to reach {hostname}."
+            ping_result = f"Failed to reach {hostname} via ping."
         except Exception as e:
-            result = str(e)
-    return render_template('common_checks.html', hostname=hostname, result=result)
+            ping_result = str(e)
+        
+        # NSLookup Command
+        nslookup_command = ['nslookup', hostname]
+        try:
+            nslookup_result = subprocess.check_output(nslookup_command, universal_newlines=True)
+        except subprocess.CalledProcessError:
+            nslookup_result = f"Failed to perform nslookup for {hostname}."
+        except Exception as e:
+            nslookup_result = str(e)
+            
+    return render_template('common_checks.html', hostname=hostname, ping_result=ping_result, nslookup_result=nslookup_result)
 
 #s2d
 @app.route('/s2dcheck', methods=['GET', 'POST'])

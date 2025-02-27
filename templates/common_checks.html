@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Ping Test</title>
+  <title>Ping, NSLookup &amp; Traceroute Test - Real-Time</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -11,11 +11,11 @@
       padding: 0;
     }
     .container {
-      max-width: 500px;
+      max-width: 600px;
       margin: 50px auto;
       background-color: #fff;
       border-radius: 8px;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
       padding: 30px;
     }
     h1 {
@@ -43,8 +43,10 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      margin-bottom: 20px;
     }
-    .button-container button, .button-container a {
+    .button-container button,
+    .button-container a {
       padding: 10px 20px;
       border: none;
       border-radius: 4px;
@@ -59,35 +61,82 @@
     .back-btn {
       background-color: #6c757d;
     }
-    .ping-result {
+    .result-box {
       background-color: #000;
       color: #0f0;
       padding: 15px;
       border-radius: 5px;
       font-family: 'Courier New', Courier, monospace;
       white-space: pre-wrap;
-      margin-top: 20px;
+      margin-bottom: 20px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .result-box h3 {
+      margin-top: 0;
+      color: #fff;
     }
   </style>
+  <!-- Include Socket.IO from CDN -->
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const socket = io();
+      // Cache result containers
+      const pingBox = document.getElementById('ping-result');
+      const nslookupBox = document.getElementById('nslookup-result');
+      const tracertBox = document.getElementById('tracert-result');
+      
+      // Handle form submission without full page reload
+      document.getElementById('realtime-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        // Clear previous results
+        pingBox.innerText = '';
+        nslookupBox.innerText = '';
+        tracertBox.innerText = '';
+        const hostname = document.getElementById('hostname').value;
+        // Emit event to server to start tests for the given hostname
+        socket.emit('start_test', { hostname: hostname });
+      });
+      
+      // Listen for realtime updates from server
+      socket.on('ping_update', function(data) {
+        pingBox.innerText += data + "\n";
+        pingBox.scrollTop = pingBox.scrollHeight;
+      });
+      
+      socket.on('nslookup_update', function(data) {
+        nslookupBox.innerText += data + "\n";
+        nslookupBox.scrollTop = nslookupBox.scrollHeight;
+      });
+      
+      socket.on('tracert_update', function(data) {
+        tracertBox.innerText += data + "\n";
+        tracertBox.scrollTop = tracertBox.scrollHeight;
+      });
+    });
+  </script>
 </head>
 <body>
   <div class="container">
-    <h1>Ping Test</h1>
-    <div class="ping-form">
-      <form method="post" action="/ping">
-        <label for="hostname">Enter Hostname or IP Address:</label>
-        <input type="text" id="hostname" name="hostname" value="{{ hostname }}" required>
-        <div class="button-container">
-          <button type="submit" class="submit-btn">Check Ping Status</button>
-          <a href="{{ url_for('home') }}" class="back-btn">Back to Home</a>
-        </div>
-      </form>
-    </div>
-    {% if result %}
-      <div class="ping-result">
-        {{ result }}
+    <h1>Ping, NSLookup &amp; Traceroute Test</h1>
+    <form id="realtime-form">
+      <label for="hostname">Enter Hostname or IP Address:</label>
+      <input type="text" id="hostname" name="hostname" required>
+      <div class="button-container">
+        <button type="submit" class="submit-btn">Start Test</button>
+        <a href="{{ url_for('home') }}" class="back-btn">Back to Home</a>
       </div>
-    {% endif %}
+    </form>
+    <div class="result-box" id="ping-result">
+      <h3>Ping Result:</h3>
+    </div>
+    <div class="result-box" id="nslookup-result">
+      <h3>NSLookup Result:</h3>
+    </div>
+    <div class="result-box" id="tracert-result">
+      <h3>Traceroute Result:</h3>
+    </div>
   </div>
 </body>
 </html>
