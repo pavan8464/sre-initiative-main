@@ -481,7 +481,8 @@ def handle_start_test(data):
 def s2dcheck():
     result = None
     if request.method == 'POST':
-        source = request.form.get('source')
+        # You can still get the client's public IP, but don't bind to it
+        # or allow the user to override it manually.
         port = request.form.get('port')
         destination = request.form.get('destination')
         
@@ -489,13 +490,13 @@ def s2dcheck():
             port = int(port)
         except ValueError:
             result = "Invalid port number. Please enter a numeric port."
-            return render_template('s2dcheck.html', result=result)
+            return render_template('s2dcheck.html', result=result, client_ip=request.remote_addr)
         
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(5)  # Timeout after 5 seconds
         try:
-            # Bind the socket to the provided source IP (OS will choose the port)
-            s.bind((source, 0))
+            # Remove the bind() call if not necessary.
+            # s.bind((source, 0))
             s.connect((destination, port))
             result = "Connection successful!"
         except Exception as e:
@@ -503,7 +504,7 @@ def s2dcheck():
         finally:
             s.close()
     
-    return render_template('s2dcheck.html', result=result)
+    return render_template('s2dcheck.html', result=result, client_ip=request.remote_addr)
 
 
 ###############################

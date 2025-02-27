@@ -6,7 +6,7 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      background-color: #1ba3dd; /* Light sky blue */
+      background-color: #1ba3dd;
       margin: 0;
       padding: 0;
     }
@@ -15,7 +15,7 @@
       margin: 50px auto;
       background-color: #fff;
       border-radius: 8px;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
       padding: 30px;
     }
     h1 {
@@ -24,9 +24,16 @@
       margin-bottom: 20px;
       font-size: 24px;
     }
+    .detected-ip {
+      text-align: center;
+      font-size: 16px;
+      margin-bottom: 20px;
+      color: #333;
+    }
     label {
       font-size: 16px;
       margin-bottom: 5px;
+      display: block;
       color: #333;
     }
     input[type="text"],
@@ -42,6 +49,7 @@
     .inline-group {
       display: flex;
       gap: 10px;
+      margin-bottom: 15px;
     }
     .inline-group > div {
       flex: 1;
@@ -82,20 +90,25 @@
 <body>
   <div class="container">
     <h1>Connectivity Checker</h1>
+    <!-- Display detected IP at the top -->
+    <div class="detected-ip">
+      <strong>Detected IP:</strong> {{ client_ip }}
+    </div>
     <form method="post" action="/s2dcheck">
+      <label for="source">Source IP:</label>
+      <input type="text" id="source" name="source" value="{{ client_ip }}" required>
+      
+      <!-- Group Destination IP and Port side by side -->
       <div class="inline-group">
         <div>
-          <label for="source">Source IP:</label>
-          <input type="text" id="source" name="source" required>
+          <label for="destination">Destination IP:</label>
+          <input type="text" id="destination" name="destination" required>
         </div>
         <div>
           <label for="port">Port:</label>
           <input type="text" id="port" name="port" required>
         </div>
       </div>
-      
-      <label for="destination">Destination IP:</label>
-      <input type="text" id="destination" name="destination" required>
       
       <div class="button-container">
         <button type="submit" class="submit-btn">Check Connectivity</button>
