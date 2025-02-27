@@ -8,7 +8,7 @@ import csv
 import time
 from io import StringIO, BytesIO
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, send_file, session
-from flask_socketio import SocketIO
+from flask_socketio import SocketIO, emit
 from reportlab.lib.pagesizes import landscape, A3
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -430,37 +430,51 @@ def handle_start_scan(data):
     end_port = int(data.get('end_port'))
     scan_ports(hostname, start_port, end_port, socketio)
 
+#####################common checks##############################
 
-@app.route('/ping', methods=['GET', 'POST'])
+@app.route('/ping', methods=['GET'])
 def ping():
-    ping_result = None
-    nslookup_result = None
-    hostname = ''
-    if request.method == 'POST':
-        hostname = request.form['hostname']
-        
-        # Ping Command
-        if platform.system().lower() == 'windows':
-            ping_command = ['ping', '-4', hostname]
-        else:
-            ping_command = ['ping', '-c', '4', '-4', hostname]
-        try:
-            ping_result = subprocess.check_output(ping_command, universal_newlines=True)
-        except subprocess.CalledProcessError:
-            ping_result = f"Failed to reach {hostname} via ping."
-        except Exception as e:
-            ping_result = str(e)
-        
-        # NSLookup Command
-        nslookup_command = ['nslookup', hostname]
-        try:
-            nslookup_result = subprocess.check_output(nslookup_command, universal_newlines=True)
-        except subprocess.CalledProcessError:
-            nslookup_result = f"Failed to perform nslookup for {hostname}."
-        except Exception as e:
-            nslookup_result = str(e)
-            
-    return render_template('common_checks.html', hostname=hostname, ping_result=ping_result, nslookup_result=nslookup_result)
+    return render_template('common_checks.html')
+
+def stream_command(command, event_name):
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        universal_newlines=True,
+        bufsize=1  # Enable line buffering
+    )
+    for line in iter(process.stdout.readline, ''):
+        if line:
+            socketio.emit(event_name, line.rstrip())
+            socketio.sleep(0)  # Yield to event loop
+    process.stdout.close()
+    process.wait()
+
+@socketio.on('start_test')
+def handle_start_test(data):
+    hostname = data.get('hostname')
+    
+    # Ping Command
+    if platform.system().lower() == 'windows':
+        ping_command = ['ping', '-4', hostname]
+    else:
+        ping_command = ['ping', '-c', '4', '-4', hostname]
+    socketio.start_background_task(target=stream_command, command=ping_command, event_name='ping_update')
+    
+    # NSLookup Command
+    nslookup_command = ['nslookup', hostname]
+    socketio.start_background_task(target=stream_command, command=nslookup_command, event_name='nslookup_update')
+    
+    # Traceroute Command
+    if platform.system().lower() == 'windows':
+        traceroute_command = ['tracert', hostname]
+    else:
+        # Use stdbuf to force line buffering on traceroute output
+        traceroute_command = ['stdbuf', '-oL', 'traceroute', hostname]
+    socketio.start_background_task(target=stream_command, command=traceroute_command, event_name='tracert_update')
+
+
 
 #s2d
 @app.route('/s2dcheck', methods=['GET', 'POST'])
